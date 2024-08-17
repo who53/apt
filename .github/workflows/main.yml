@@ -1,0 +1,164 @@
+name: Update Packages Repository
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/*.deb'
+
+jobs:
+  update-repo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import GPG key and setup gpg
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --import --batch
+          echo "allow-preset-passphrase" > ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "no-tty" >> ~/.gnupg/gpg.conf
+          gpg-connect-agent reloadagent /bye
+
+      - name: Generate Packages and Release files
+        env:
+          GPG_TTY: $(tty)
+          GNUPGHOME: /home/runner/.gnupg
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          USER: ${{github.repository_owner}}
+          REPO: ${{github.event.repository.name}}
+        run: |
+          mkdir -p public/dists/stable/main/binary-arm64
+          dpkg-scanpackages packages > public/dists/stable/main/binary-arm64/Packages
+          gzip -k -f public/dists/stable/main/binary-arm64/Packages
+          
+          cd public/dists/stable
+          
+          cat << EOF > Release
+          Origin: https://$USER.github.io/$REPO
+          Label: Droidian PKG
+          Suite: stable
+          Codename: stable
+          Version: 1.0
+          Architectures: arm64
+          Components: main
+          Description: Packages 
+          EOF
+          
+          apt-ftparchive release . >> Release
+          
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --default-key $GPG_KEY_ID --clearsign -o InRelease Release
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --default-key $GPG_KEY_ID -abs -o Release.gpg Release
+
+      - name: Generate index.html for manual downloads
+        run: |
+          cat << 'EOF' > public/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Packages</title>
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap">
+            <style>
+              body {
+                background-color: #121212;
+                color: #e0e0e0;
+                font-family: 'Poppins', sans-serif;
+                margin: 0;
+                padding: 0;
+              }
+              .container {
+                max-width: 90%;
+                margin: 50px auto;
+                padding: 20px;
+              }
+              h1 {
+                text-align: center;
+                font-weight: 600;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+                overflow-x: auto;
+              }
+              th, td {
+                padding: 15px;
+                text-align: left;
+                border-bottom: 1px solid #2e2e2e;
+                white-space: nowrap;
+              }
+              th {
+                background-color: #1e1e1e;
+                font-weight: 400;
+              }
+              tr:nth-child(even) {
+                background-color: #1a1a1a;
+              }
+              a {
+                color: #bb86fc;
+                text-decoration: none;
+              }
+              a:hover {
+                text-decoration: underline;
+              }
+              footer {
+                text-align: center;
+                margin-top: 50px;
+                font-size: 0.9em;
+                color: #a0a0a0;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Packages</h1>
+              <p>Below are the available packages for manual download:</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Package Name</th>
+                    <th>Version</th>
+                  </tr>
+                </thead>
+                <tbody>
+          EOF
+          
+          for package in packages/*.deb; do
+          package_name=$(dpkg-deb --info "$package" | grep " Package: " | awk '{print $2}')
+          package_version=$(dpkg-deb --info "$package" | grep " Version: " | awk '{print $2}')
+          echo "              <tr>" >> public/index.html
+          echo "                <td><a href=\"packages/$(basename $package)\">$package_name</a></td>" >> public/index.html
+          echo "                <td>$package_version</td>" >> public/index.html
+          echo "              </tr>" >> public/index.html
+          done
+
+          cat << 'EOF' >> public/index.html
+                </tbody>
+              </table>
+            </div>
+            <footer>
+              &copy; 2024 WHO53. All rights reserved.
+            </footer>
+          </body>
+          </html>
+          EOF
+
+      - name: Move packages directory to public
+        run: mv packages public/packages
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          force_orphan: true
