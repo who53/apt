@@ -58,6 +58,7 @@ jobs:
 
       - name: Generate index.html for manual downloads
         run: |
+          echo "apt.who53.me" > public/CNAME
           cat << 'EOF' > public/index.html
           <!DOCTYPE html>
           <html lang="en">
