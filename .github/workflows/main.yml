@@ -145,7 +145,7 @@ jobs:
               </table>
             </div>
             <footer>
-              &copy; 2024 WHO53. All rights reserved.
+              &copy; 2024 Deepak Kumar (WHO53). All rights reserved.
             </footer>
           </body>
           </html>
@@ -155,10 +155,8 @@ jobs:
         run: |
           mv packages public/packages
           mv WHO53.asc public/
-          mkdir -p public/apt
           shopt -s extglob
-          mv public/!(apt) public/apt/
-          echo "who53.me" > public/CNAME
+          echo "apt.who53.me" > public/CNAME
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
