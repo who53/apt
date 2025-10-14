@@ -156,7 +156,6 @@ jobs:
           mv packages public/packages
           mv WHO53.asc public/
           shopt -s extglob
-          echo "apt.who53.me" > public/CNAME
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
